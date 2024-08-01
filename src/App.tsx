@@ -21,49 +21,116 @@ const escapeHTML = (text: string) => {
   return text.replace(/[&<>"']/g, (m) => map[m]);
 };
 
-const sendFeedback = async (feedbackText: string, button: HTMLElement, isPositive: boolean, tabId: string) => {
+const url_str = "http://127.0.0.1:8000";
+
+const sendFeedback = async (
+  feedbackText: string,
+  button: HTMLElement,
+  isPositive: boolean,
+  tabId: string,
+  endpoint: string,
+  chatHistory: (HumanMessage | AIMessage)[],
+  responseMessage: string // Parameter for the current AI message
+) => {
+  // Immediately hide the feedback menu before sending the request
+  const feedbackOptions = button.closest(".feedback-options") as HTMLElement;
+  if (feedbackOptions) {
+    feedbackOptions.style.display = "none";
+  }
+  const feedbackContainer = document.querySelector(".feedback-container");
+  if (feedbackContainer) {
+    feedbackContainer.remove();
+  }
+
   try {
-    const response = await fetch('/feedback', {
-      method: 'POST',
+    // Find the index of the responseMessage in the chatHistory
+    const responseIndex = chatHistory.findIndex((msg) => msg.text === responseMessage);
+
+    if (responseIndex === -1) {
+      console.error("Response message not found in chat history.");
+      return;
+    }
+
+    // Get all messages prior to the response message for chatHistory
+    const previousMessages = chatHistory.slice(0, responseIndex);
+
+    // Get the message immediately preceding the response message
+    const previousUserMessage = chatHistory[responseIndex - 1]?.text || "N/A";
+
+    const body = {
+      isPositive: isPositive ? "positive" : "negative",
+      comentario: feedbackText,
+      mensaje: previousUserMessage, // Previous message before the response
+      respuesta: responseMessage,   // The message which triggered the feedback
+      historial: previousMessages.map((msg) => [
+        msg instanceof HumanMessage ? "human" : "ai",
+        msg.text,
+      ]),
+      endpoint: endpoint,
+    };
+
+    console.log(chatHistory);
+    console.log(JSON.stringify(body));
+
+    const response = await fetch(url_str + "/feedback", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify({ feedback: feedbackText, positive: isPositive, tabId }),
+      body: JSON.stringify(body),
     });
+
     const data = await response.json();
     console.log(data);
-    const feedbackOptions = button.closest('.feedback-options') as HTMLElement;
-    if (feedbackOptions) {
-      (feedbackOptions as HTMLElement).style.display = 'none';
-    }
-    const feedbackContainer = document.querySelector(".feedback-container");
-    if (feedbackContainer) {
-      (feedbackContainer as HTMLElement).remove();
-    }
   } catch (error) {
-    console.error('Error:', error);
+    console.error("Error:", error);
   }
 };
 
-const toggleFeedbackOptions = (button: HTMLElement, shouldCloseFeedback: React.MutableRefObject<boolean>) => {
+
+
+const toggleFeedbackOptions = (
+  button: HTMLElement,
+  shouldCloseFeedback: React.MutableRefObject<boolean>
+) => {
   const options = button.nextElementSibling as HTMLElement;
+
+  // Check if options exist and log if not found
+  if (!options) {
+    console.error("Feedback options element not found. Check DOM structure.");
+    return;
+  }
+
   const feedbackContainer = document.querySelector(".feedback-container");
 
-  if (options.style.display === 'block') {
-    options.style.display = 'none';
+  // Toggle display of feedback options
+  if (options.style.display === "block") {
+    options.style.display = "none";
     if (feedbackContainer) {
-      (feedbackContainer as HTMLElement).remove();
+      feedbackContainer.remove();
     }
-    document.removeEventListener('click', (event) => closeFeedbackAndMenu(event, shouldCloseFeedback));
+    document.removeEventListener("click", (event) =>
+      closeFeedbackAndMenu(event, shouldCloseFeedback)
+    );
   } else {
-    options.style.display = 'block';
+    options.style.display = "block";
     setTimeout(() => {
-      document.addEventListener('click', (event) => closeFeedbackAndMenu(event, shouldCloseFeedback));
+      document.addEventListener("click", (event) =>
+        closeFeedbackAndMenu(event, shouldCloseFeedback)
+      );
     }, 0);
   }
 };
 
-const showFeedbackBox = (button: HTMLElement, shouldCloseFeedback: React.MutableRefObject<boolean>, tabId: string) => {
+
+const showFeedbackBox = (
+  button: HTMLElement,
+  shouldCloseFeedback: React.MutableRefObject<boolean>,
+  tabId: string,
+  endpoint: string,
+  chatHistory: (HumanMessage | AIMessage)[],
+  responseMessage: string // Added parameter for response message
+) => {
   let existingFeedbackBox = document.querySelector(".feedback-container");
   if (existingFeedbackBox) {
     (existingFeedbackBox as HTMLElement).remove();
@@ -71,24 +138,37 @@ const showFeedbackBox = (button: HTMLElement, shouldCloseFeedback: React.Mutable
 
   let feedbackContainer = document.createElement("div");
   feedbackContainer.classList.add("feedback-container");
-  feedbackContainer.style.position = 'absolute';
-  feedbackContainer.style.width = 'auto';
-  feedbackContainer.style.height = 'auto';
-  feedbackContainer.style.zIndex = '1000';
+  feedbackContainer.style.position = "absolute";
+  feedbackContainer.style.width = "auto";
+  feedbackContainer.style.height = "auto";
+  feedbackContainer.style.zIndex = "1000";
 
   let feedbackBox = document.createElement("textarea");
   feedbackBox.classList.add("feedback-box");
   feedbackBox.placeholder = "Cuéntame más...";
-  feedbackBox.style.width = '100px';
-  feedbackBox.style.height = '50px';
+  feedbackBox.style.width = "200px";
+  feedbackBox.style.height = "100px";
 
-  feedbackBox.addEventListener('keydown', function(event) {
-    if (event.key === "Enter") {
+  feedbackBox.addEventListener("keydown", function (event) {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      sendFeedback(feedbackBox.value, button, false, tabId);
+      sendFeedback(
+        feedbackBox.value,
+        button,
+        false,
+        tabId,
+        endpoint,
+        chatHistory,
+        responseMessage // Pass responseMessage here
+      );
       feedbackContainer.remove();
-      (button.parentNode as HTMLElement).style.display = 'none';
+      (button.parentNode as HTMLElement).style.display = "none";
     }
+  });
+
+  // Evita que el menú se cierre al hacer clic en la caja de texto
+  feedbackBox.addEventListener("click", (event) => {
+    event.stopPropagation();
   });
 
   feedbackContainer.appendChild(feedbackBox);
@@ -106,9 +186,12 @@ const showFeedbackBox = (button: HTMLElement, shouldCloseFeedback: React.Mutable
   }, 0);
 
   setTimeout(() => {
-    document.addEventListener('click', (event) => closeFeedbackAndMenu(event, shouldCloseFeedback));
+    document.addEventListener("click", (event) =>
+      closeFeedbackAndMenu(event, shouldCloseFeedback)
+    );
   }, 0);
 };
+
 
 const closeFeedbackAndMenu = (event: MouseEvent, shouldCloseFeedback: React.MutableRefObject<boolean>) => {
   const feedbackOptions = document.querySelector('.feedback-options');
@@ -153,9 +236,8 @@ const App: React.FC = () => {
     return id;
   }, []);
 
-  
   const remoteChain = useMemo(() => new RemoteRunnable({
-    url: `https://btasistentes.azurewebsites.net/${endpoint}`,
+    url: `${url_str}/${endpoint}`,
   }), [endpoint]);
 
   const handleNewChat = async () => {
@@ -187,21 +269,15 @@ const App: React.FC = () => {
   };
 
   const processMsg = (text: string) => {
-      const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
-      let processedText = text.replace(linkRegex, '<a href="$2" target="_blank">$1</a>')
-              .replace(/####\s*(.+?)\n/g, '<h4>$1</h4>')
-              .replace(/###\s*(.+?)\n/g, '<h3>$1</h3>')
-              .replace(/##\s*(.+?)\n/g, '<h2>$1</h2>')
-              .replace(/```json\n([\s\S]+?)\n```/g, '<pre><code class="json">$1</code></pre>')
-              .replace(/```xml\n([\s\S]+?)\n```/g, '<pre><code class="xml">$1</code></pre>')
-              .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
-      //         .replace(/- (.+?)\n/g, '<li>$1</li>\n');
-              
-      // // Envolver todos los <li> en un solo <ul>
-      // processedText = processedText.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
-      // processedText = processedText.replace(/<\/ul>\n<ul>/g, '\n');
-
-      return processedText;
+    const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+    let processedText = text.replace(linkRegex, '<a href="$2" target="_blank">$1</a>')
+            .replace(/####\s*(.+?)\n/g, '<h4>$1</h4>')
+            .replace(/###\s*(.+?)\n/g, '<h3>$1</h3>')
+            .replace(/##\s*(.+?)\n/g, '<h2>$1</h2>')
+            .replace(/```json\n([\s\S]+?)\n```/g, '<pre><code class="json">$1</code></pre>')
+            .replace(/```xml\n([\s\S]+?)\n```/g, '<pre><code class="xml">$1</code></pre>')
+            .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    return processedText;
   };
 
   const chunkProcess = (text: string) => {
@@ -210,23 +286,21 @@ const App: React.FC = () => {
               .replace(/\|\|/g, '<br>')
               .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
   };
-
-  
   const sendMessage = async () => {
     if (awaitingResponse || !message.trim()) return;
-
+  
     stopMessageInput();
-
+  
     const userMessage = (
       <div className="message-container user" key={Date.now()}>
         <div className="message">{escapeHTML(message)}</div>
       </div>
     );
     setChat((prevChat) => [...prevChat, userMessage]);
-
+  
     try {
       chatHistory.current.push(new HumanMessage(message));
-
+  
       const logStream = await remoteChain.streamEvents(
         {
           input: message,
@@ -242,61 +316,89 @@ const App: React.FC = () => {
           },
         }
       );
-
-      let fullMessage = '';
-      let messageContainerKey: string | null = null;
+  
+      let fullMessage = "";
+      let messageContainerKey = ""; // Initialize with an empty string
+  
       for await (const chunk of logStream) {
         const processedContent = processChunk(chunk);
         if (processedContent) {
-          // Reemplazar caracteres y procesar enlaces
           fullMessage += chunkProcess(processedContent);
-          fullMessage = processMsg(fullMessage); // Procesar enlaces
-      
+          fullMessage = processMsg(fullMessage);
+  
           if (!messageContainerKey) {
+            // Generate a new key when creating the message
             messageContainerKey = Date.now().toString();
             setChat((prevChat) => [
               ...prevChat,
-              <div className="message-container agent" key={messageContainerKey}>
-                <img src="static/minilogo.png" alt="Avatar" className="avatar" />
-                <div className="message" dangerouslySetInnerHTML={{ __html: fullMessage }}></div>
-                <button className="feedback-button-menu" onClick={(e) => toggleFeedbackOptions(e.currentTarget as HTMLElement, shouldCloseFeedback)}>⋮</button>
-                <div className="feedback-options">
-                  <span onClick={(e) => sendFeedback('Correcto', e.currentTarget as HTMLElement, true, tabId)}>Correcto</span>
-                  <span onClick={(e) => showFeedbackBox(e.currentTarget as HTMLElement, shouldCloseFeedback, tabId)}>Incorrecto</span>
-                </div>
-              </div>,
+              createAgentMessage(fullMessage, messageContainerKey),
             ]);
           } else {
             setChat((prevChat) =>
               prevChat.map((message) =>
-                message.key === messageContainerKey ? (
-                  <div className="message-container agent" key={messageContainerKey}>
-                    <img src="static/minilogo.png" alt="Avatar" className="avatar" />
-                    <div className="message" dangerouslySetInnerHTML={{ __html: fullMessage }}></div>
-                    <button className="feedback-button-menu" onClick={(e) => toggleFeedbackOptions(e.currentTarget as HTMLElement, shouldCloseFeedback)}>⋮</button>
-                    <div className="feedback-options">
-                      <span onClick={(e) => sendFeedback('Correcto', e.currentTarget as HTMLElement, true, tabId)}>Correcto</span>
-                      <span onClick={(e) => showFeedbackBox(e.currentTarget as HTMLElement, shouldCloseFeedback, tabId)}>Incorrecto</span>
-                    </div>
-                  </div>
-                ) : (
-                  message
-                )
+                message.key === messageContainerKey
+                  ? createAgentMessage(fullMessage, messageContainerKey)
+                  : message
               )
             );
           }
         }
       }
-
-
+  
       chatHistory.current.push(new AIMessage(fullMessage));
       startMessageInput();
     } catch (error) {
-      console.error('Error:', error);
+      console.error("Error:", error);
       startMessageInput();
     }
   };
-
+  
+  // Adjust this function to use the messageContainerKey correctly
+  const createAgentMessage = (fullMessage: string, key: string) => (
+    <div className="message-container agent" key={key}>
+      <img src="static/minilogo.png" alt="Avatar" className="avatar" />
+      <div className="message">
+        <div dangerouslySetInnerHTML={{ __html: fullMessage }}></div>
+        <button
+          className="feedback-button-menu"
+          onClick={(e) => toggleFeedbackOptions(e.currentTarget as HTMLElement, shouldCloseFeedback)}
+        >
+          ⋮
+        </button>
+        <div className="feedback-options" style={{ display: 'none' }}>
+          <span
+            onClick={(e) =>
+              sendFeedback(
+                "Correcto",
+                e.currentTarget as HTMLElement,
+                true,
+                tabId,
+                endpoint,
+                chatHistory.current,
+                fullMessage
+              )
+            }
+          >
+            Correcto
+          </span>
+          <span
+            onClick={(e) =>
+              showFeedbackBox(
+                e.currentTarget as HTMLElement,
+                shouldCloseFeedback,
+                tabId,
+                endpoint,
+                chatHistory.current,
+                fullMessage
+              )
+            }
+          >
+            Incorrecto
+          </span>
+        </div>
+      </div>
+    </div>
+  );  
 
   const stopMessageInput = () => {
     if (messageRef.current) {
@@ -306,6 +408,7 @@ const App: React.FC = () => {
     }
     setAwaitingResponse(true);
   };
+
   const startMessageInput = () => {
     if (messageRef.current) {
       messageRef.current.value = '';
@@ -319,7 +422,7 @@ const App: React.FC = () => {
     const handleAdjustHeight = () => adjustHeight(messageRef);
 
     window.addEventListener('resize', handleAdjustHeight);
-    handleAdjustHeight(); // Call initially to set the height correctly
+    handleAdjustHeight(); // Llamada inicial para ajustar la altura correctamente
 
     return () => {
       window.removeEventListener('resize', handleAdjustHeight);
