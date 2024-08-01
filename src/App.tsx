@@ -329,11 +329,14 @@ const App: React.FC = () => {
           if (!messageContainerKey) {
             // Generate a new key when creating the message
             messageContainerKey = Date.now().toString();
+            // eslint-disable-next-line no-loop-func
+
             setChat((prevChat) => [
               ...prevChat,
               createAgentMessage(fullMessage, messageContainerKey),
             ]);
           } else {
+            // eslint-disable-next-line no-loop-func
             setChat((prevChat) =>
               prevChat.map((message) =>
                 message.key === messageContainerKey
